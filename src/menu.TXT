@@ -1,0 +1,62 @@
+// #include "menu.h"
+
+menu::menu
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void playOLED(void) {
+  display.clearDisplay();
+  display.setCursor(20,20);
+  display.setTextSize(2);  // Draw 2X-scale text
+  display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Draw 'inverse' text
+  display.println("PLAYING");
+
+  // display.setTextSize(2);             // Draw 2X-scale text
+  // display.setTextColor(SSD1306_WHITE);
+  // display.print(F("0x")); display.println(0xDEADBEEF, HEX);
+
+  display.display();
+
+}
+
+void stopOLED(void) {
+  display.clearDisplay();
+  display.setCursor(20,20);
+  display.setTextSize(2);  // Draw 2X-scale text
+  display.setTextColor(SSD1306_WHITE, SSD1306_BLACK); // Draw 'inverse' text
+  display.println("STOPPED");
+
+  // display.setTextSize(2);             // Draw 2X-scale text
+  // display.setTextColor(SSD1306_WHITE);
+  // display.print(F("0x")); display.println(0xDEADBEEF, HEX);
+
+  display.display();
+}
+
+void recOLED(void) {
+  display.clearDisplay();
+
+  testdrawbitmap();
+
+  display.display();
+}
+
+
+
+
+
+
+
+
