@@ -192,7 +192,6 @@ using namespace admux;
 Mux potmux(Pin(24, INPUT, PinType::Analog), Pinset(29, 34, 35));
 Mux mux(Pin(25, INPUT, PinType::Digital), Pinset(29, 34, 35));
 int potData[8];
-// int potVal;
 byte buttonData[8];
 ////////////// END MUX STUFF /////
 
@@ -245,7 +244,7 @@ void setup() {
   }
 
 display.clearDisplay();
-pinMode(24, INPUT_PULLUP);
+
 
 }
 
