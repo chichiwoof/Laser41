@@ -9,16 +9,16 @@
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_I2CDevice.h>
 #include <Mux.h>
-#include <QuadEncoder.h>
+#include <Encoder.h>
 
 
 ////////////////ENCODER STUFF ////////////////////////
-uint32_t mCurPosValue;
-uint32_t old_position = 0;
-uint32_t mCurPosValue1;
-uint32_t old_position1 = 0;
-QuadEncoder myEnc1(1, 40, 41);  // Encoder on channel 1 of 4 available, Phase A (pin0), PhaseB(pin1), Pullups Req(0)  ////dont know what last 4 is for.
-     
+// Change these two numbers to the pins connected to your encoder.
+//   Best Performance: both pins have interrupt capability
+//   Good Performance: only the first pin has interrupt capability
+//   Low Performance:  neither pin has interrupt capability
+Encoder myEnc(41, 40);
+//   avoid using pins with LEDs attached
 
 
 /////////////// WAV FILE HEADER INFO //////////////////////
@@ -47,12 +47,9 @@ byte byte1, byte2, byte3, byte4;
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-
 #define LOGO_HEIGHT   56
 #define LOGO_WIDTH    56
-
-static const unsigned char PROGMEM logo_sask[] =
-{
+static const unsigned char PROGMEM logo_sask[] = {
 B00000000, B00000000, B00000001, B11111111, B10000000, B00000000, B00000000,
 B00000000, B00000000, B00011111, B11111111, B11111000, B00000000, B00000000,
 B00000000, B00000000, B11111111, B11111111, B11111111, B00000000, B00000000,
@@ -206,17 +203,14 @@ int buttonData[8];
 //////////////// GLOBAL VARIABLES //////////////////
 int sampKnob;
 int oldSampKnob;
-
+long oldPosition  = -999;
+int oldStop = 1000;
+int oldPlay = 1000;
+int oldRecord = 1000;
 
 void setup() {
 
-///////////////////// ENCODER SETUP ///////////////
-  while(!Serial && millis() < 4000);
-  /* Initialize the ENC module. */
-  myEnc1.setInitConfig();
-  myEnc1.EncConfig.INDEXTriggerMode = RISING_EDGE;
-  myEnc1.init();
-///////////////////// END ENCODER SETUP ///////////////
+
 
    Serial.begin(9600);
   
@@ -274,19 +268,8 @@ digitalWrite(31, LOW);
 void loop() {
 
 
-  //encRead();
-  mCurPosValue = myEnc1.read();
-
-  if(mCurPosValue != old_position){
-    /* Read the position values. */
-    Serial.printf("Current position value1: %ld\r\n", mCurPosValue);
-    Serial.printf("Position differential value1: %d\r\n", (int16_t)myEnc1.getHoldDifference());
-    Serial.printf("Position HOLD revolution value1: %d\r\n", myEnc1.getHoldRevolution());
-    Serial.printf("Index Counter: %d\r\n", myEnc1.indexCounter);
-    Serial.println();
-  }
-
-  old_position = mCurPosValue;
+  encRead();
+  
 
   for (byte i = 0; i < mux.channelCount(); i++) {
    buttonData[i] = mux.read(i); /* Reads from channel i (returns HIGH or LOW) */;
@@ -310,21 +293,26 @@ void loop() {
 
 
   // Respond to button presses
-  if (mux.read(1) <= 500) {
+  if ((mux.read(1) <= 500) && (oldRecord > 500)) {
     Serial.println("Record Button Press");
     if (mode == 2) stopPlaying();
     if (mode == 0) startRecording();
   }
-  if (mux.read(2) <= 500) {
+  oldRecord = mux.read(1);
+
+  if ((mux.read(2) <= 500) && (oldStop > 500)){
     Serial.println("Stop Button Press");
     if (mode == 1) stopRecording();
     if (mode == 2) stopPlaying();
   }
-  if (mux.read(3) <= 500) {
+  oldStop = mux.read(2);
+
+  if ((mux.read(3) <= 500) && (oldPlay > 500)) {
     Serial.println("Play Button Press");
     if (mode == 1) stopRecording();
     if (mode == 0) startPlaying();
   }
+  oldPlay = mux.read(3);
 
   // If playing or recording, continue...
   if (mode == 1) {
@@ -337,8 +325,11 @@ void loop() {
 }
 
 void encRead(){
-  
-
+  long newPosition = myEnc.read();
+  if (newPosition != oldPosition) {
+    oldPosition = newPosition;
+    Serial.println(newPosition);
+  }
 }
 
 void displayPot() {
@@ -365,10 +356,14 @@ void testdrawbitmap(void) {
 void startRecording() {
   recOLED();
   Serial.println("StartRecording");
-  if (SD.exists("REC2.WAV")) {
-    SD.remove("REC2.WAV");
+  char fileName[32];
+  snprintf(fileName, sizeof(fileName), "RECORD%i.WAV", sampKnob);
+  Serial.print("filename will be ");
+  Serial.println(fileName);
+  if (SD.exists(fileName)) {
+    SD.remove(fileName);
   }
-  frec = SD.open("REC2.WAV", FILE_WRITE);
+  frec = SD.open(fileName, FILE_WRITE);
   if (frec) {
     Serial.println("File Open");
     queue1.begin();
@@ -399,13 +394,15 @@ void continueRecording() {
     elapsedMicros usec = 0;
     frec.write(buffer, 512);  //256 or 512 (dudes code)
     recByteSaved += 512;
-    Serial.print("SD write, us=");
-    Serial.println(usec);
+    // Print how long each sample recording takes. 
+    //Serial.print("SD write, us=");
+    //Serial.println(usec);
   }
 }
 
 void stopRecording() {
   Serial.println("StopRecording");
+  stopOLED();
   queue1.end();
   queue2.end();
   // flush buffer
@@ -425,7 +422,9 @@ void stopRecording() {
 
 void startPlaying() {
   Serial.println("startPlaying");
-  playFile("REC2.WAV");  // filenames are always uppercase 8.3 format
+  char fileName[32];
+  snprintf(fileName, sizeof(fileName), "RECORD%i.WAV", sampKnob);
+  playFile(fileName);  // filenames are always uppercase 8.3 format
   // audioSD.play("GLUB4.WAV");
   mode = 2;
 }
