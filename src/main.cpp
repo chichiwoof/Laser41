@@ -9,9 +9,19 @@
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_I2CDevice.h>
 #include <Mux.h>
+#include <QuadEncoder.h>
 
 
-// WAV FILE HEADER INFO
+////////////////ENCODER STUFF ////////////////////////
+uint32_t mCurPosValue;
+uint32_t old_position = 0;
+uint32_t mCurPosValue1;
+uint32_t old_position1 = 0;
+QuadEncoder myEnc1(1, 40, 41);  // Encoder on channel 1 of 4 available, Phase A (pin0), PhaseB(pin1), Pullups Req(0)  ////dont know what last 4 is for.
+     
+
+
+/////////////// WAV FILE HEADER INFO //////////////////////
 unsigned long ChunkSize = 0L;
 unsigned long Subchunk1Size = 16;
 unsigned int AudioFormat = 1;
@@ -24,17 +34,11 @@ unsigned long Subchunk2Size = 0L;
 unsigned long recByteSaved = 0L;
 unsigned long NumSamples = 0L;
 byte byte1, byte2, byte3, byte4;
-// END WAV FILE HEADER INFO
+//////////////////////// END WAV FILE HEADER INFO //////////////////////
 
-//Button debouncing
-Bounce buttonRecord = Bounce(0, 8);
-Bounce buttonStop =   Bounce(1, 8);  // 8 = 8 ms debounce time
-Bounce buttonPlay =   Bounce(2, 8);
-
-// OLED DEFS
+//////////////////////// OLED DEFS //////////////////////
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
-
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 // The pins for I2C are defined by the Wire-library. 
 // On an arduino UNO:       A4(SDA), A5(SCL)
@@ -106,9 +110,9 @@ B00000000, B00000000, B01111111, B11111111, B11111110, B00000000, B00000000,
 B00000000, B00000000, B00011111, B11111111, B11111000, B00000000, B00000000,
 B00000000, B00000000, B00000001, B11111111, B10000000, B00000000, B00000000
 };
-// END OLED DEFS
+//////////////////////// END OLED DEFS  //////////////////////
 
-// GUItool: begin automatically generated code
+//////////////////////// GUItool: begin automatically generated code //////////////////////
 AudioInputI2S            i2s1;           //xy=142,190
 AudioRecordQueue         queue1;         //xy=334,107
 AudioRecordQueue         queue2;         //xy=351,154
@@ -119,7 +123,8 @@ AudioConnection          patchCord2(i2s1, 1, queue2, 0);
 AudioConnection          patchCord3(audioSD, 0, i2s2, 0);
 AudioConnection          patchCord4(audioSD, 1, i2s2, 1);
 AudioControlSGTL5000     sgtl5000_1;     //xy=365,311
-// GUItool: end automatically generated code
+//////////////////////// GUItool: end automatically generated code //////////////////////
+
 
 // which input on the audio shield will be used?
 const int myInput = AUDIO_INPUT_LINEIN;
@@ -133,6 +138,9 @@ const int myInput = AUDIO_INPUT_LINEIN;
 //#define SDCARD_CS_PIN    BUILTIN_SDCARD // 254?
 //#define SDCARD_MOSI_PIN  11  // not actually used
 //#define SDCARD_SCK_PIN   13  // not actually used
+
+
+
 
 // Remember which mode we're doing
 int mode = 0;  // 0=stopped, 1=recording, 2=playing
@@ -156,22 +164,20 @@ void playOLED();
 void stopOLED();
 void recOLED();
 void displayPot();
+void encRead();
 
 
 
-void playFile(const char *filename)
+void playFile(const char *filename)  // not sure why this only works when above main loop since it is declared above.
 {
   playOLED();
   Serial.print("Playing file: ");
   Serial.println(filename);
-
   // Start playing the file.  This sketch continues to
   // run while the file plays.
   audioSD.play(filename);
-
   // A brief delay for the library read WAV info
    delay(25);
-
   // Simply wait for the file to finish playing.
   //while (audioSD.isPlaying()) {
     // uncomment these lines if you audio shield
@@ -182,7 +188,9 @@ void playFile(const char *filename)
   //}
 }
 
-//////////// MUX STUFF /////
+
+
+//////////////////////// MUX STUFF /////////////////
 using namespace admux;
 /*
  * Creates a Mux instance.
@@ -190,49 +198,29 @@ using namespace admux;
  * 2nd argument is the S0-S3 (channel control) pins (Arduino pins 8, 9, 10, 11).
  */
 Mux potmux(Pin(24, INPUT, PinType::Analog), Pinset(29, 34, 35));
-Mux mux(Pin(25, INPUT, PinType::Digital), Pinset(29, 34, 35));
+Mux mux(Pin(25, INPUT, PinType::Analog), Pinset(29, 34, 35));
 int potData[8];
-byte buttonData[8];
-////////////// END MUX STUFF /////
+int buttonData[8];
+////////////////////////// END MUX STUFF /////////////////
+
+//////////////// GLOBAL VARIABLES //////////////////
+int sampKnob;
+int oldSampKnob;
 
 
 void setup() {
 
+///////////////////// ENCODER SETUP ///////////////
+  while(!Serial && millis() < 4000);
+  /* Initialize the ENC module. */
+  myEnc1.setInitConfig();
+  myEnc1.EncConfig.INDEXTriggerMode = RISING_EDGE;
+  myEnc1.init();
+///////////////////// END ENCODER SETUP ///////////////
+
    Serial.begin(9600);
-
-  // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
-  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-    Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
-  }
-   // Show initial display buffer contents on the screen --
-  // the library initializes this with an Adafruit splash screen.
-  display.display();
-  delay(2000); // Pause for 2 seconds
-
-  // Clear the buffer
-  display.clearDisplay();
-
-
-  // record queue uses this memory to buffer incoming audio.
-  AudioMemory(60); // 60
-
-// Configure the pushbutton pins
-
- 
-
-
-
-
-  // Enable the audio shield, select input, and enable output
-  sgtl5000_1.enable();
-  sgtl5000_1.inputSelect(myInput);
-  sgtl5000_1.volume(0.8);
-  sgtl5000_1.lineInLevel(2,2);
-
-
-
-  // Initialize the SD card
+  
+    ///////////////////// SD CARD SETUP ///////////////
   SPI.setMOSI(SDCARD_MOSI_PIN);
   SPI.setSCK(SDCARD_SCK_PIN);
   if (!(SD.begin(SDCARD_CS_PIN))) {
@@ -242,58 +230,97 @@ void setup() {
       delay(500);
     }
   }
+///////////////////// END SD CARD SETUP ///////////////
 
-display.clearDisplay();
 
+///////////////////// OLED SETUP ///////////////
+  // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+  // Show initial display buffer contents on the screen --
+  // the library initializes this with a Saskian splash screen.
+  display.display();
+  delay(2000); // Pause for 2 seconds
+  // Clear the buffer
+  display.clearDisplay();
+///////////////////// END OLED SETUP ///////////////
+
+
+///////////////////// TEENSY AUDIO SHIELD STGL5000 SETUP ///////////////
+  // record queue uses this memory to buffer incoming audio.
+  AudioMemory(60); // 60
+  // Enable the audio shield, select input, and enable output
+  sgtl5000_1.enable();
+  sgtl5000_1.inputSelect(myInput);
+  sgtl5000_1.volume(0.8);
+  sgtl5000_1.lineInLevel(2,2);
+///////////////////// END TEENSY AUDIO SHIELD STGL5000 SETUP ///////////////
+
+ 
+
+
+/////////////// init 4051 inhibit pins low ///////////////////
+pinMode(28, OUTPUT);
+digitalWrite(28, LOW);
+pinMode(31, OUTPUT);
+digitalWrite(31, LOW);
+/////////////// init 4051 inhibit pins low ///////////////////
 
 }
 
 
 void loop() {
-  
-  // for (byte o = 0; o < potmux.channelCount(); o++) {
-  //   potdata = potmux.read(o) /* Reads from channel i (returns a value from 0 to 1023) */;
-  // }
 
+
+  //encRead();
+  mCurPosValue = myEnc1.read();
+
+  if(mCurPosValue != old_position){
+    /* Read the position values. */
+    Serial.printf("Current position value1: %ld\r\n", mCurPosValue);
+    Serial.printf("Position differential value1: %d\r\n", (int16_t)myEnc1.getHoldDifference());
+    Serial.printf("Position HOLD revolution value1: %d\r\n", myEnc1.getHoldRevolution());
+    Serial.printf("Index Counter: %d\r\n", myEnc1.indexCounter);
+    Serial.println();
+  }
+
+  old_position = mCurPosValue;
 
   for (byte i = 0; i < mux.channelCount(); i++) {
-    delay(5);
    buttonData[i] = mux.read(i); /* Reads from channel i (returns HIGH or LOW) */;
-
-    Serial.print("Push button at channel "); Serial.print(i); Serial.print(" is "); Serial.println(buttonData[i] == LOW ? "pressed" : "not pressed");
-  }
-  Serial.println();
-
-  delay(15);
-
+    // Serial.print("button at channel "); Serial.print(i); Serial.print(" is at "); Serial.print((double) (buttonData[i]) * 100 / 1023); Serial.println("%");
+   }
+  //Serial.println();
 
   for (int o = 0; o < potmux.channelCount(); o++) {
    potData[o] = potmux.read(o); /* Reads from channel i (returns a value from 0 to 1023) */;
-
-    Serial.print("Potentiometer at channel "); Serial.print(o); Serial.print(" is at "); Serial.print((double) (potData[o]) * 100 / 1023); Serial.println("%");
+  // Serial.print("Potentiometer at channel "); Serial.print(o); Serial.print(" is at "); Serial.print((double) (potData[o]) * 100 / 1023); Serial.println("%");
   }
-  Serial.println();
+  //Serial.println();
 
-  delay(15);
+  
+  sampKnob = potData[7] * 16 / 1022;
+  if (sampKnob != oldSampKnob) {
   displayPot();
+  }
+  else  display.clearDisplay();
+  oldSampKnob = sampKnob;
 
-  // First, read the buttons
-  buttonRecord.update();
-  buttonStop.update();
-  buttonPlay.update();
 
   // Respond to button presses
-  if (buttonRecord.fallingEdge()) {
+  if (mux.read(1) <= 500) {
     Serial.println("Record Button Press");
     if (mode == 2) stopPlaying();
     if (mode == 0) startRecording();
   }
-  if (buttonStop.fallingEdge()) {
+  if (mux.read(2) <= 500) {
     Serial.println("Stop Button Press");
     if (mode == 1) stopRecording();
     if (mode == 2) stopPlaying();
   }
-  if (buttonPlay.fallingEdge()) {
+  if (mux.read(3) <= 500) {
     Serial.println("Play Button Press");
     if (mode == 1) stopRecording();
     if (mode == 0) startPlaying();
@@ -309,14 +336,18 @@ void loop() {
 
 }
 
+void encRead(){
+  
+
+}
+
 void displayPot() {
   display.clearDisplay();
   display.setCursor(0,20);
   display.setTextSize(2);  // Draw 2X-scale text
   display.setTextColor(SSD1306_WHITE, SSD1306_BLACK); // Draw 'inverse' text
   display.print("SAMPLE ");
-  int samp = potData[7] * 16 / 1022;
-  display.println(samp);
+  display.println(sampKnob);
   display.display();
 }
 
@@ -330,7 +361,6 @@ void testdrawbitmap(void) {
   display.display();
   // delay(1000);
 }
-
 
 void startRecording() {
   recOLED();
@@ -349,7 +379,6 @@ void startRecording() {
 
 }
 
-// write all 512 bytes to the SD card   
 void continueRecording() {
   if (queue1.available() >= 2 && queue2.available() >= 2) {
     byte buffer[512];
@@ -416,7 +445,6 @@ void stopPlaying() {
   if (mode == 2) audioSD.stop();
   mode = 0;
 }
-
 
 void writeOutHeader() { // update WAV header with final filesize/datasize
 //  NumSamples = (recByteSaved*8)/bitsPerSample/numChannels;
