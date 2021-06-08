@@ -202,11 +202,23 @@ int buttonData[8];
 
 //////////////// GLOBAL VARIABLES //////////////////
 int sampKnob;
-int oldSampKnob;
-long oldPosition  = -999;
+int oldSampKnob; // to tell if sample knob has changed samples and display on oled
+int blueKnob;
+int blueMux = 1;
+int blueOut = 2;
+int greenKnob;
+int greenMux = 2;
+int greenOut = 9;
+int redKnob;
+int redMux = 0;
+int redOut = 33;
+
+long oldPosition  = -999; // old encoder position
+
 int oldStop = 1000;
 int oldPlay = 1000;
 int oldRecord = 1000;
+
 
 void setup() {
 
@@ -261,6 +273,13 @@ digitalWrite(28, LOW);
 pinMode(31, OUTPUT);
 digitalWrite(31, LOW);
 /////////////// init 4051 inhibit pins low ///////////////////
+
+pinMode(33, OUTPUT);
+digitalWrite(33, LOW);
+pinMode(2, OUTPUT);
+digitalWrite(2, LOW);
+pinMode(9, OUTPUT);
+digitalWrite(9, LOW);
 
 }
 
@@ -426,15 +445,31 @@ void startPlaying() {
   snprintf(fileName, sizeof(fileName), "RECORD%i.WAV", sampKnob);
   playFile(fileName);  // filenames are always uppercase 8.3 format
   // audioSD.play("GLUB4.WAV");
+  blueKnob = potData[blueMux] * 255 / 1022;
+  analogWrite(blueOut, blueKnob);
+  greenKnob = potData[greenMux] * 255 / 1022;
+  analogWrite(greenOut, greenKnob);
+  redKnob = potData[redMux] * 255 / 1022;
+  analogWrite(redOut, redKnob);
   mode = 2;
 }
 
 void continuePlaying() {
+  blueKnob = potData[blueMux] * 255 / 1022;
+  analogWrite(blueOut, blueKnob);
+  greenKnob = potData[greenMux] * 255 / 1022;
+  analogWrite(greenOut, greenKnob);
+  redKnob = potData[redMux] * 255 / 1022;
+  analogWrite(redOut, redKnob);
+
   if (!audioSD.isPlaying()) {
     audioSD.stop();
     display.clearDisplay();
     display.display();
     mode = 0;
+    analogWrite(blueOut, 0);
+    analogWrite(greenOut, 0);
+    analogWrite(redOut, 0); 
   }
 }
 
@@ -443,6 +478,9 @@ void stopPlaying() {
   Serial.println("stopPlaying");
   if (mode == 2) audioSD.stop();
   mode = 0;
+  analogWrite(blueOut, 0);
+  analogWrite(greenOut, 0);
+  analogWrite(redOut, 0);  
 }
 
 void writeOutHeader() { // update WAV header with final filesize/datasize
