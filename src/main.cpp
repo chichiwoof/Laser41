@@ -18,6 +18,12 @@
 //   Good Performance: only the first pin has interrupt capability
 //   Low Performance:  neither pin has interrupt capability
 Encoder myEnc(41, 40);
+/*
+Buttons 
+0>
+*/
+///////// 
+
 //   avoid using pins with LEDs attached
 
 
@@ -110,16 +116,53 @@ B00000000, B00000000, B00000001, B11111111, B10000000, B00000000, B00000000
 //////////////////////// END OLED DEFS  //////////////////////
 
 //////////////////////// GUItool: begin automatically generated code //////////////////////
-AudioInputI2S            i2s1;           //xy=142,190
-AudioRecordQueue         queue1;         //xy=334,107
-AudioRecordQueue         queue2;         //xy=351,154
-AudioPlaySdWav           audioSD;        //xy=514,238
-AudioOutputI2S           i2s2;           //xy=706,241
-AudioConnection          patchCord1(i2s1, 0, queue1, 0);
-AudioConnection          patchCord2(i2s1, 1, queue2, 0);
-AudioConnection          patchCord3(audioSD, 0, i2s2, 0);
-AudioConnection          patchCord4(audioSD, 1, i2s2, 1);
-AudioControlSGTL5000     sgtl5000_1;     //xy=365,311
+#include <Audio.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
+#include <Audio.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
+#include <Audio.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
+// GUItool: begin automatically generated code
+AudioInputI2S            i2s1;           //xy=55,400.0000057220459
+AudioSynthWaveformDc     dc1;            //xy=62.500003814697266,506.25000858306885
+AudioSynthWaveformDc     dc2;            //xy=62.500003814697266,546.2500095367432
+AudioMixer4              mixer3;         //xy=252.50000381469727,407.50000762939453
+AudioMixer4              mixer4;         //xy=252.50000381469727,472.50000762939453
+AudioRecordQueue         queue1;         //xy=452,201
+AudioRecordQueue         queue2;         //xy=453,249
+AudioPlaySdWav           audioSD;        //xy=453,298
+AudioMixer4              mixer1;         //xy=644.5000076293945,413.7500057220459
+AudioMixer4              mixer2;         //xy=645.5000114440918,477.50000762939453
+AudioOutputI2S           i2s2;           //xy=974.0000152587891,418.2500057220459
+AudioConnection          patchCord1(i2s1, 0, mixer3, 0);
+AudioConnection          patchCord2(i2s1, 1, mixer4, 0);
+AudioConnection          patchCord3(dc1, 0, mixer3, 1);
+AudioConnection          patchCord4(dc2, 0, mixer4, 1);
+AudioConnection          patchCord5(mixer3, 0, mixer1, 1);
+AudioConnection          patchCord6(mixer3, queue1);
+AudioConnection          patchCord7(mixer4, 0, mixer2, 1);
+AudioConnection          patchCord8(mixer4, queue2);
+AudioConnection          patchCord9(audioSD, 0, mixer1, 0);
+AudioConnection          patchCord10(audioSD, 1, mixer2, 0);
+AudioConnection          patchCord11(mixer1, 0, i2s2, 0);
+AudioConnection          patchCord12(mixer2, 0, i2s2, 1);
+AudioControlSGTL5000     sgtl5000_1;     //xy=639,618
+// GUItool: end automatically generated code
+
+
+
 //////////////////////// GUItool: end automatically generated code //////////////////////
 
 
@@ -202,6 +245,8 @@ int buttonData[8];
 
 //////////////// GLOBAL VARIABLES //////////////////
 int sampKnob;
+float xOffset = 0.0;
+float yOffset = 0.0;
 int oldSampKnob; // to tell if sample knob has changed samples and display on oled
 int blueKnob;
 int blueMux = 1;
@@ -212,6 +257,8 @@ int greenOut = 9;
 int redKnob;
 int redMux = 0;
 int redOut = 33;
+
+
 
 long oldPosition  = -999; // old encoder position
 
@@ -262,6 +309,10 @@ void setup() {
   sgtl5000_1.inputSelect(myInput);
   sgtl5000_1.volume(0.8);
   sgtl5000_1.lineInLevel(2,2);
+
+  mixer3.gain(0, -1.0);
+  mixer4.gain(0, -1.0);
+  mixer4.gain(1, -1.0);
 ///////////////////// END TEENSY AUDIO SHIELD STGL5000 SETUP ///////////////
 
  
@@ -281,7 +332,7 @@ digitalWrite(2, LOW);
 pinMode(9, OUTPUT);
 digitalWrite(9, LOW);
 
-}
+} // END SETUP
 
 
 void loop() {
@@ -302,13 +353,23 @@ void loop() {
   }
   //Serial.println();
 
-  
-  sampKnob = potData[7] * 16 / 1022;
-  if (sampKnob != oldSampKnob) {
-  displayPot();
-  }
-  else  display.clearDisplay();
+  xOffset = potData[3] * 2.0 / 1020. - 1.0;
+  yOffset = potData[4] * 2.0 / 1020. - 1.0;
+  dc1.amplitude(xOffset);
+  dc2.amplitude(yOffset);
+
+  sampKnob = potData[7] * 16 / 1020;
+  if (sampKnob != oldSampKnob) { displayPot(); }
+  else  {display.clearDisplay();}
   oldSampKnob = sampKnob;
+
+
+  if (mux.read(6) <= 500) { // if down button is pressed then turn on input monitoring.
+    analogWrite(redOut, 255);
+    mixer1.gain(1, 1.0);
+    mixer2.gain(1, 1.0);
+    Serial.println("monitor button pressed.");
+  }
 
 
   // Respond to button presses
@@ -452,6 +513,8 @@ void startPlaying() {
   redKnob = potData[redMux] * 255 / 1022;
   analogWrite(redOut, redKnob);
   mode = 2;
+  mixer1.gain(1, 0.0);
+  mixer2.gain(1, 0.0);
 }
 
 void continuePlaying() {
@@ -470,6 +533,8 @@ void continuePlaying() {
     analogWrite(blueOut, 0);
     analogWrite(greenOut, 0);
     analogWrite(redOut, 0); 
+    mixer1.gain(1, 1.0);
+    mixer2.gain(1, 1.0);
   }
 }
 
@@ -481,6 +546,8 @@ void stopPlaying() {
   analogWrite(blueOut, 0);
   analogWrite(greenOut, 0);
   analogWrite(redOut, 0);  
+  mixer1.gain(1, 1.0);
+  mixer2.gain(1, 1.0);
 }
 
 void writeOutHeader() { // update WAV header with final filesize/datasize
