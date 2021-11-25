@@ -21,6 +21,24 @@ Encoder myEnc(41, 40);
 /*
 Buttons 
 0>
+1>record
+2>stop
+3>play
+4>
+5>
+6>down
+7>
+
+Pots
+0>red
+1>blue
+2>green
+3>X offset
+4>Y offset
+5>modA
+6>modB
+7>sample
+
 */
 ///////// 
 
@@ -247,6 +265,9 @@ int buttonData[8];
 int sampKnob;
 float xOffset = 0.0;
 float yOffset = 0.0;
+float xScale = 0.0;
+float yScale = 0.0;
+
 int oldSampKnob; // to tell if sample knob has changed samples and display on oled
 int blueKnob;
 int blueMux = 1;
@@ -265,6 +286,8 @@ long oldPosition  = -999; // old encoder position
 int oldStop = 1000;
 int oldPlay = 1000;
 int oldRecord = 1000;
+
+int PWMtime = 20000;
 
 
 void setup() {
@@ -325,12 +348,15 @@ pinMode(31, OUTPUT);
 digitalWrite(31, LOW);
 /////////////// init 4051 inhibit pins low ///////////////////
 
-pinMode(33, OUTPUT);
-digitalWrite(33, LOW);
-pinMode(2, OUTPUT);
-digitalWrite(2, LOW);
-pinMode(9, OUTPUT);
-digitalWrite(9, LOW);
+pinMode(redOut, OUTPUT);
+digitalWrite(redOut, LOW);
+analogWriteFrequency(redOut, PWMtime);
+pinMode(greenOut, OUTPUT);
+digitalWrite(greenOut, LOW);
+analogWriteFrequency(greenOut, PWMtime);
+pinMode(blueOut, OUTPUT);
+digitalWrite(blueOut, LOW);
+analogWriteFrequency(blueOut, 8000);
 
 } // END SETUP
 
@@ -358,13 +384,18 @@ void loop() {
   dc1.amplitude(xOffset);
   dc2.amplitude(yOffset);
 
+  xScale = analogRead(14) * 3.0 / 1020. - 1.0;
+  yScale = analogRead(15) * 3.0 / 1020. - 1.0;
+  mixer1.gain(0, xScale);
+  mixer2.gain(0, yScale);
+
   sampKnob = potData[7] * 16 / 1020;
   if (sampKnob != oldSampKnob) { displayPot(); }
   else  {display.clearDisplay();}
   oldSampKnob = sampKnob;
 
 
-  if (mux.read(6) <= 500) { // if down button is pressed then turn on input monitoring.
+  if (mux.read(0) <= 500) { // if down button is pressed then turn on input monitoring.
     analogWrite(redOut, 255);
     mixer1.gain(1, 1.0);
     mixer2.gain(1, 1.0);
@@ -506,9 +537,9 @@ void startPlaying() {
   snprintf(fileName, sizeof(fileName), "RECORD%i.WAV", sampKnob);
   playFile(fileName);  // filenames are always uppercase 8.3 format
   // audioSD.play("GLUB4.WAV");
-  blueKnob = potData[blueMux] * 255 / 1022;
+  blueKnob = (potData[blueMux] * 126 / 1022);
   analogWrite(blueOut, blueKnob);
-  greenKnob = potData[greenMux] * 255 / 1022;
+  greenKnob = potData[greenMux] * 126 / 1022;
   analogWrite(greenOut, greenKnob);
   redKnob = potData[redMux] * 255 / 1022;
   analogWrite(redOut, redKnob);
@@ -520,7 +551,7 @@ void startPlaying() {
 void continuePlaying() {
   blueKnob = potData[blueMux] * 255 / 1022;
   analogWrite(blueOut, blueKnob);
-  greenKnob = potData[greenMux] * 255 / 1022;
+  greenKnob = potData[greenMux] * 126 / 1022;
   analogWrite(greenOut, greenKnob);
   redKnob = potData[redMux] * 255 / 1022;
   analogWrite(redOut, redKnob);
